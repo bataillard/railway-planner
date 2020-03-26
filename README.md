@@ -14,7 +14,8 @@ This server uses Apache2, MySQL 14 and PHP 7.2
     [mysqld]
     character-set-client-handshake = FALSE
     character-set-server = utf8mb4
-    collation-server = utf8mb4_unicode_ci```
+    collation-server = utf8mb4_unicode_ci
+    ```
     to your my.cnf file (usually under /etc/mysql/my.cnf). This ensures the databases uses utf8 encoding to store text
 2. The data is sourced from the 2020 timetable for the Swiss public transport network in GTFS format, available at [the Swiss Transportation Open Data Platform](https://opentransportdata.swiss/en/dataset/timetable-2020-gtfs). Download the gtfs .zip file
 3. In the projet root (the same level as the "sql/" and "html/" directories), create a new folder called "data". In the "data/" folder, create a new folder called "clean". 
