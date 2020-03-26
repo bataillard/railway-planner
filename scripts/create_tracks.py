@@ -11,7 +11,7 @@ def clean(data):
 
     return {
         "stop_id": match.group(1),
-        "track": match.group(4) if match.group(4) else "0",
+        "track": match.group(4).upper() if match.group(4) else "0",
     }
 
 with open(HOME_PATH + "/data/stops.txt", newline="", encoding="utf-8-sig") as csvfile:
@@ -24,7 +24,9 @@ with open(HOME_PATH + "/data/stops.txt", newline="", encoding="utf-8-sig") as cs
         for row in reader:
             cleaned = clean(row)
 
-            if cleaned["stop_id"] not in seen and "P" not in cleaned["stop_id"]:
+            prim_key = cleaned["stop_id"] + cleaned["track"]
+
+            if prim_key not in seen and "P" not in cleaned["stop_id"]:
                 writer.writerow(cleaned)
-                seen.append(cleaned["stop_id"])
+                seen.append(prim_key)
 
