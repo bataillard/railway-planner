@@ -1,0 +1,1 @@
+HOME_PATH = "/home/luca/Coding/CPSC304/railwayplanner"
