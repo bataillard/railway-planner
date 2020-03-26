@@ -1,3 +1,6 @@
+# Ignore the data directory, since it is too large to fit on github
+data
+
 
 # Created by https://www.gitignore.io/api/linux,macos,python,phpunit,windows
 # Edit at https://www.gitignore.io/?templates=linux,macos,python,phpunit,windows

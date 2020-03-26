@@ -33,5 +33,5 @@ with open(HOME_PATH + "/data/calendar.txt", newline="", encoding="utf-8-sig") as
 
             if cleaned["service_id"] not in seen:
                 writer.writerow(cleaned)
-                seen.append(cleaned["service_id"])
+                seen.add(cleaned["service_id"])
 
