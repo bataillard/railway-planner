@@ -1,23 +1,36 @@
 import re
+import csv
 
 from constants import HOME_PATH
 
-def clean_line(line):
-    data = line.split(",")
-    no_quotes = [x.replace("\"", "") for x in data]
-    
-    return [x.strip() for x in no_quotes]
+FIELDNAMES = ["stop_id", "stop_lat", "stop_long", "stop_name"]
 
-def convert_tuple(tup):
-    return tup
+def clean_stop(stop_dict):
+    id = re.search(r"(\w+)(:(\w+):(\w+))?", stop_dict["stop_id"]).group(1)
+    lat = float(stop_dict["stop_lat"])
+    lon = float(stop_dict["stop_lon"])
 
-with open(HOME_PATH + "/data/stops.txt") as f:
-    f.readline()  # Ignore headers
+    return {
+        "stop_id": id,
+        "stop_lat": lat,
+        "stop_long": lon,
+        "stop_name": stop_dict["stop_name"]
+    }
 
-    for count, line in enumerate(f):
-        clean_tuple = clean_line(line)
+with open(HOME_PATH + "/data/stops.txt", newline="", encoding="utf-8-sig") as csvfile:
+    with open(HOME_PATH + "/data/clean/stops.csv", "w", newline="\n") as outputcsv:
+        reader = csv.DictReader(csvfile)
+        writer = csv.DictWriter(outputcsv, fieldnames=FIELDNAMES, quoting=csv.QUOTE_ALL, lineterminator="\n")
+        
+        seen_stops = []
 
-        print(clean_tuple)
+        for row in reader:
+            stop = clean_stop(row)
+
+            if stop["stop_id"] not in seen_stops and "P" not in stop["stop_id"]:
+                writer.writerow(stop)
+                seen_stops.append(stop["stop_id"])
 
 
-            
+
+

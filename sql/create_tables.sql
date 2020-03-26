@@ -3,7 +3,7 @@
 
 CREATE TABLE Agency (
     agency_id VARCHAR(50) PRIMARY KEY,
-    agency_name VARCHAR(100)
+    agency_name VARCHAR(100) 
 );
 
 -- Train infrastucture tables
