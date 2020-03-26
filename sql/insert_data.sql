@@ -16,8 +16,8 @@ FIELDS TERMINATED BY ','
 ENCLOSED BY '"' 
 LINES TERMINATED BY '\n';
 
-LOAD DATA LOCAL INFILE "/home/luca/Coding/CPSC304/railwayplanner/data/clean/service.csv"
-INTO TABLE Service
+LOAD DATA LOCAL INFILE "/home/luca/Coding/CPSC304/railwayplanner/data/clean/transfer.csv"
+INTO TABLE Transfer
 FIELDS TERMINATED BY ','
 ENCLOSED BY '"' 
 LINES TERMINATED BY '\n';
@@ -28,5 +28,10 @@ FIELDS TERMINATED BY ','
 ENCLOSED BY '"' 
 LINES TERMINATED BY '\n';
 
+LOAD DATA LOCAL INFILE "/home/luca/Coding/CPSC304/railwayplanner/data/clean/service.csv"
+INTO TABLE Service
+FIELDS TERMINATED BY ','
+ENCLOSED BY '"' 
+LINES TERMINATED BY '\n';
 
 
