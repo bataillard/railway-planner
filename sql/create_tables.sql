@@ -1,4 +1,11 @@
 
+-- Agency and employee management
+
+CREATE TABLE Agency (
+    agency_id VARCHAR(50) PRIMARY KEY,
+    agency_name VARCHAR(100)
+);
+
 -- Train infrastucture tables
 
 CREATE TABLE Stop (
@@ -13,7 +20,7 @@ CREATE TABLE Track (
     track VARCHAR(50),
 
     PRIMARY KEY (stop_id, track),
-    FOREIGN KEY stop_id REFERENCES Stop(stop_id)
+    FOREIGN KEY (stop_id) REFERENCES Stop(stop_id)
 );
 
 CREATE TABLE Transfer (
@@ -22,7 +29,7 @@ CREATE TABLE Transfer (
     to_stop_id VARCHAR(50),
     to_track VARCHAR(50),
 
-    transfer_time INTEGER
+    transfer_time INTEGER,
 
     PRIMARY KEY (from_stop_id, from_track, to_stop_id, to_track),
     FOREIGN KEY (from_stop_id, from_track) REFERENCES Track(stop_id, track),
@@ -35,7 +42,7 @@ CREATE TABLE Route (
     route_type VARCHAR(50),
     route_name VARCHAR(50),
 
-    FOREIGN KEY agency_id REFERENCES Agency(agency_id)
+    FOREIGN KEY (agency_id) REFERENCES Agency(agency_id)
 );
 
 CREATE TABLE Service (
@@ -55,6 +62,11 @@ CREATE TABLE Service (
 
 -- Train trip scheduling tables
 
+CREATE TABLE TripName (
+    trip_name VARCHAR(50) PRIMARY KEY,
+    headsign VARCHAR(100)
+);
+
 CREATE TABLE Trip (
     trip_id VARCHAR(50) PRIMARY KEY,
     service_id VARCHAR(50) NOT NULL,
@@ -70,16 +82,12 @@ CREATE TABLE Trip (
     FOREIGN KEY (trip_name) REFERENCES TripName(trip_name)
 );
 
-CREATE TABLE TripName (
-    trip_name VARCHAR(50) PRIMARY KEY,
-    headsign VARCHAR(100)
-);
+-- Actors definition
 
--- Agency and employee management
-
-CREATE TABLE Agency (
-    agency_id VARCHAR(50) PRIMARY KEY,
-    agency_name VARCHAR(100)
+CREATE TABLE Passenger (
+    passenger_id INTEGER PRIMARY KEY AUTO_INCREMENT,
+    passenger_name VARCHAR(200),
+    passenger_password VARCHAR(255)
 );
 
 CREATE TABLE TrainGuard (
@@ -89,29 +97,12 @@ CREATE TABLE TrainGuard (
     employee_password VARCHAR(255)
 );
 
-CREATE TABLE Patrols (
-    employee_id INTEGER,
-    trip_id VARCHAR(50),
-
-    PRIMARY KEY (employee_id, trip_id),
-    FOREIGN KEY (employee_id) REFERENCES TrainGuard(employee_id),
-    FOREIGN KEY (trip_id) REFERENCES Trip(trip_id)
-);
-
--- Passenger definition
-
-CREATE TABLE Passenger (
-    passenger_id INTEGER PRIMARY KEY AUTO_INCREMENT,
-    passenger_name VARCHAR(200),
-    passenger_password VARCHAR(255)
-);
-
 -- Itinerary management
 
 CREATE TABLE Itinerary (
     itinerary_id INTEGER PRIMARY KEY AUTO_INCREMENT,
     starting_stop VARCHAR(50),
-    end_stop VARCHAR(50),
+    end_stop VARCHAR(50)
 );
 
 CREATE TABLE PassengerItinerary (
@@ -131,8 +122,8 @@ CREATE TABLE VehicleChange (
     board BOOLEAN,
 
     PRIMARY KEY (itinerary_id, trip_id, stop_id, track, board),
-    FOREIGN KEY itinerary_id REFERENCES Itinerary(itinerary_id),
-    FOREIGN KEY trip_id REFERENCES Trip(trip_id),
+    FOREIGN KEY (itinerary_id) REFERENCES Itinerary(itinerary_id),
+    FOREIGN KEY (trip_id) REFERENCES Trip(trip_id),
     FOREIGN KEY (stop_id, track) REFERENCES Track(stop_id, track)
 );
 
@@ -144,7 +135,16 @@ CREATE TABLE CyclistReservation (
 
     PRIMARY KEY (passenger_id, itinerary_id),
     FOREIGN KEY (passenger_id, itinerary_id) REFERENCES PassengerItinerary(passenger_id, itinerary_id)
-)
+);
+
+CREATE TABLE Patrols (
+    employee_id INTEGER,
+    trip_id VARCHAR(50),
+
+    PRIMARY KEY (employee_id, trip_id),
+    FOREIGN KEY (employee_id) REFERENCES TrainGuard(employee_id),
+    FOREIGN KEY (trip_id) REFERENCES Trip(trip_id)
+);
 
 CREATE TABLE TicketCheck (
     itinerary_id INTEGER,
@@ -156,6 +156,6 @@ CREATE TABLE TicketCheck (
     PRIMARY KEY (passenger_id, itinerary_id, employee_id),
     FOREIGN KEY (passenger_id, itinerary_id) REFERENCES PassengerItinerary(passenger_id, itinerary_id),
     FOREIGN KEY (employee_id) REFERENCES TrainGuard(employee_id)
-)
+);
 
 
