@@ -73,13 +73,26 @@ CREATE TABLE Trip (
     route_id VARCHAR(50) NOT NULL,
 
     trip_name VARCHAR(50),
-    headsign VARCHAR(100),
     wheelchair_accessible BOOLEAN,
     bikes_allowed BOOLEAN,
 
     FOREIGN KEY (service_id) REFERENCES Service(service_id),
     FOREIGN KEY (route_id) REFERENCES Route(route_id),
     FOREIGN KEY (trip_name) REFERENCES TripName(trip_name)
+);
+
+CREATE TABLE StopTime (
+    trip_id VARCHAR(50),
+    stop_id VARCHAR(50),
+    track VARCHAR(50),
+
+    stop_sequence INTEGER,
+    arrival_time TIME,
+    departure_time TIME,
+
+    PRIMARY KEY (trip_id, stop_id, track),
+    FOREIGN KEY (trip_id) REFERENCES Trip(trip_id),
+    FOREIGN KEY (stop_id, track) REFERENCES Track(stop_id, track)
 );
 
 -- Actors definition
