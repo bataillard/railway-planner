@@ -18,7 +18,7 @@ def clean_stop(stop_dict):
     }
 
 with open(HOME_PATH + "/data/stops.txt", newline="", encoding="utf-8-sig") as csvfile:
-    with open(HOME_PATH + "/data/clean/stops.csv", "w", newline="\n") as outputcsv:
+    with open(HOME_PATH + "/data/clean/stop.csv", "w", newline="\n") as outputcsv:
         reader = csv.DictReader(csvfile)
         writer = csv.DictWriter(outputcsv, fieldnames=FIELDNAMES, quoting=csv.QUOTE_ALL, lineterminator="\n")
         
