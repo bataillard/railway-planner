@@ -10,6 +10,12 @@ FIELDS TERMINATED BY ','
 ENCLOSED BY '"' 
 LINES TERMINATED BY '\n';
 
+LOAD DATA LOCAL INFILE "/home/luca/Coding/CPSC304/railwayplanner/data/clean/track.csv"
+INTO TABLE Track
+FIELDS TERMINATED BY ','
+ENCLOSED BY '"' 
+LINES TERMINATED BY '\n';
+
 LOAD DATA LOCAL INFILE "/home/luca/Coding/CPSC304/railwayplanner/data/clean/service.csv"
 INTO TABLE Service
 FIELDS TERMINATED BY ','
@@ -21,5 +27,6 @@ INTO TABLE Route
 FIELDS TERMINATED BY ','
 ENCLOSED BY '"' 
 LINES TERMINATED BY '\n';
+
 
 
