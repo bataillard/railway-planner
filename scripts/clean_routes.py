@@ -19,12 +19,12 @@ with open(HOME_PATH + "/data/routes.txt", newline="", encoding="utf-8-sig") as c
         reader = csv.DictReader(csvfile)
         writer = csv.DictWriter(outputcsv, fieldnames=FIELDNAMES, quoting=csv.QUOTE_ALL, lineterminator="\n")
         
-        seen = []
+        seen = set()
 
         for row in reader:
             cleaned = clean(row)
 
             if cleaned["route_id"] not in seen:
                 writer.writerow(cleaned)
-                seen.append(cleaned["route_id"])
+                seen.add(cleaned["route_id"])
 

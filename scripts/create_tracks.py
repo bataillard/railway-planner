@@ -19,7 +19,7 @@ with open(HOME_PATH + "/data/stops.txt", newline="", encoding="utf-8-sig") as cs
         reader = csv.DictReader(csvfile)
         writer = csv.DictWriter(outputcsv, fieldnames=FIELDNAMES, quoting=csv.QUOTE_ALL, lineterminator="\n")
         
-        seen = []
+        seen = set()
 
         for row in reader:
             cleaned = clean(row)
@@ -28,5 +28,5 @@ with open(HOME_PATH + "/data/stops.txt", newline="", encoding="utf-8-sig") as cs
 
             if prim_key not in seen and "P" not in cleaned["stop_id"]:
                 writer.writerow(cleaned)
-                seen.append(prim_key)
+                seen.add(prim_key)
 

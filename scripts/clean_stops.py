@@ -22,14 +22,14 @@ with open(HOME_PATH + "/data/stops.txt", newline="", encoding="utf-8-sig") as cs
         reader = csv.DictReader(csvfile)
         writer = csv.DictWriter(outputcsv, fieldnames=FIELDNAMES, quoting=csv.QUOTE_ALL, lineterminator="\n")
         
-        seen_stops = []
+        seen_stops = set()
 
         for row in reader:
             stop = clean_stop(row)
 
             if stop["stop_id"] not in seen_stops and "P" not in stop["stop_id"]:
                 writer.writerow(stop)
-                seen_stops.append(stop["stop_id"])
+                seen_stops.add(stop["stop_id"])
 
 
 

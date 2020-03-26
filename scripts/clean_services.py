@@ -26,7 +26,7 @@ with open(HOME_PATH + "/data/calendar.txt", newline="", encoding="utf-8-sig") as
         reader = csv.DictReader(csvfile)
         writer = csv.DictWriter(outputcsv, fieldnames=FIELDNAMES, quoting=csv.QUOTE_ALL, lineterminator="\n")
         
-        seen = []
+        seen = set()
 
         for row in reader:
             cleaned = clean(row)

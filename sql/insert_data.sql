@@ -34,4 +34,10 @@ FIELDS TERMINATED BY ','
 ENCLOSED BY '"' 
 LINES TERMINATED BY '\n';
 
+LOAD DATA LOCAL INFILE "/home/luca/Coding/CPSC304/railwayplanner/data/clean/tripname.csv"
+INTO TABLE TripName
+FIELDS TERMINATED BY ','
+ENCLOSED BY '"' 
+LINES TERMINATED BY '\n';
+
 

@@ -16,13 +16,13 @@ with open(HOME_PATH + "/data/agency.txt", newline="", encoding="utf-8-sig") as c
         reader = csv.DictReader(csvfile)
         writer = csv.DictWriter(outputcsv, fieldnames=FIELDNAMES, quoting=csv.QUOTE_ALL, lineterminator="\n")
         
-        seen = []
+        seen = set()
 
         for row in reader:
             agency = clean_agency(row)
 
             if agency["agency_id"] not in seen:
                 writer.writerow(agency)
-                seen.append(agency["agency_id"])
+                seen.add(agency["agency_id"])
 
 
