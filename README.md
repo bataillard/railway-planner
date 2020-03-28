@@ -2,7 +2,8 @@
 
 ## Setup
 
-This server uses Apache2, MySQL 14 and PHP 7.2
+This server uses Apache2, [MySQL 8.0](https://www.itsupportwale.com/blog/how-to-install-mysql-8-on-ubuntu-18-04/)
+and PHP 7.2
 
 1. Add 
     ```[client]
