@@ -29,10 +29,11 @@ and PHP 7.2
 8. Then insert the csv data into the database with `SOURCE <path to root>/sql/insert_data.sql`. You will have to change the paths to the data files in insert_data.sql. Depending on the dataset used, this will take quite a while to complete (it took ~10 minutes on my machine.
 9. Run the uniquify_routes.sql script, which will modify routes so that every trip on a specific route has the exact same stops. This is needed for the RAPTOR pathfinding algorithm.
 10. Inside "config/", create a file named "db_cfg.ini" with content: 
-```
-[database_credentials]
-host = "<database host, usually localhost>"
-user = "<database user>"
-password = "<database user password>"
-database = "<name of database>"
+    ```
+    [database_credentials]
+    host = "<database host, usually localhost>"
+    user = "<database user>"
+    password = "<database user password>"
+    database = "<name of database>"
+    ```
 
