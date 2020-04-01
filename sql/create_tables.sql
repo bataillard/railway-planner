@@ -42,6 +42,8 @@ CREATE TABLE Route (
     route_type VARCHAR(50),
     route_name VARCHAR(50),
 
+    INDEX USING BTREE (agency_id),
+
     FOREIGN KEY (agency_id) REFERENCES Agency(agency_id)
 );
 
@@ -76,6 +78,8 @@ CREATE TABLE Trip (
     wheelchair_accessible BOOLEAN,
     bikes_allowed BOOLEAN,
 
+    INDEX USING BTREE (route_id),
+
     FOREIGN KEY (service_id) REFERENCES Service(service_id),
     FOREIGN KEY (route_id) REFERENCES Route(route_id),
     FOREIGN KEY (trip_name) REFERENCES TripName(trip_name)
@@ -89,6 +93,9 @@ CREATE TABLE StopTime (
     stop_sequence INTEGER,
     arrival_time TIME,
     departure_time TIME,
+    
+    INDEX USING BTREE (trip_id),
+    INDEX USING BTREE (stop_id, track),
 
     PRIMARY KEY (trip_id, stop_id, track),
     FOREIGN KEY (trip_id) REFERENCES Trip(trip_id),
@@ -170,5 +177,3 @@ CREATE TABLE TicketCheck (
     FOREIGN KEY (passenger_id, itinerary_id) REFERENCES PassengerItinerary(passenger_id, itinerary_id),
     FOREIGN KEY (employee_id) REFERENCES TrainGuard(employee_id)
 );
-
-
