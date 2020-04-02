@@ -39,5 +39,9 @@ class TripModel
         return $this->dl->loadTripStopTimes($this);
     }
 
+    public function timeAtTrack(TrackModel $track) {
+        return $this->dl->loadTripArrivalAtTrack($this, $track);
+    }
+
 
 }

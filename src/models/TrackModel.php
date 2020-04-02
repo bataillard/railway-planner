@@ -44,6 +44,10 @@ class TrackModel implements DataObject
         return $this->stop_id;
     }
 
+    public function getTrackId()
+    {
+        return $this->track;
+    }
 
     public function setStop(StopModel $stop)
     {
@@ -73,8 +77,10 @@ class TrackModel implements DataObject
 
     public function getTransfers(): array
     {
-        return $this->routes;
+        return $this->transfers;
     }
+
+
 
 
 }

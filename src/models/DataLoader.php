@@ -3,10 +3,11 @@
 namespace src\models;
 
 use src\models\interfaces\DataObjectBuilder;
+use src\raptor\Time;
 
 class DataLoader
 {
-    private const DB_CFG_PATH = "../../../config/db_cfg.ini";
+    private const DB_CFG_PATH = "/../config/db_cfg.ini";
 
     private const ROUTE_QUERY = "SELECT * FROM Route";
     private const STOP_QUERY = "SELECT * FROM Stop";
@@ -26,10 +27,9 @@ class DataLoader
     ";
 
     private const ROUTE_STOPTIMES_QUERY = "
-        SELECT ST.*
+        SELECT DISTINCT stop_id, track, stop_sequence, arrival_time, departure_time
         FROM Route R NATURAL JOIN Trip T NATURAL JOIN StopTime ST
         WHERE route_id LIKE ?
-        GROUP BY trip_id, stop_id, track, stop_sequence, arrival_time, departure_time
         ORDER BY stop_sequence;
     ";
 
@@ -40,11 +40,28 @@ class DataLoader
         ORDER BY ST.stop_sequence;
     ";
 
+    private const TRIP_STOP_ARRIVAL_TIME_QUERY = "
+        SELECT DISTINCT TIME_FORMAT(arrival_time, \"%H\"), TIME_FORMAT(arrival_time, \"%i\")
+        FROM Trip T NATURAL JOIN StopTime ST
+        WHERE trip_id LIKE ? AND stop_id LIKE ? AND track LIKE ?;
+    ";
+
+    private const EARLIEST_TRIP_QUERY = "
+        SELECT ST.trip_id, TIME_FORMAT(MIN(ST.departure_time), \"%H\"), TIME_FORMAT(MIN(ST.departure_time), \"%i\")
+        FROM Route R NATURAL JOIN Trip T NATURAL JOIN StopTime ST
+        WHERE route_id LIKE ? AND ST.departure_time >= ?  AND ST.stop_id LIKE ? AND ST.track LIKE ?
+        GROUP BY ST.trip_id, ST.departure_time
+        ORDER BY ST.departure_time
+        LIMIT 1;
+    ";
+
     private $db;
     private $route_tracks_stmt;
     private $route_trips_stmt;
     private $route_stoptimes_stmt;
     private $trip_stoptimes_stmt;
+    private $trip_stop_arrival_time_stmt;
+    private $earliest_trip_stmt;
 
     private $routes;
     private $routes_map;
@@ -75,14 +92,16 @@ class DataLoader
         $this->route_trips_stmt = $this->db->prepare(self::ROUTE_TRIPS_QUERY);
         $this->route_stoptimes_stmt = $this->db->prepare(self::ROUTE_STOPTIMES_QUERY);
         $this->trip_stoptimes_stmt = $this->db->prepare(self::TRIP_STOPTIMES_QUERY);
+        $this->trip_stop_arrival_time_stmt = $this->db->prepare(self::TRIP_STOP_ARRIVAL_TIME_QUERY);
+        $this->earliest_trip_stmt = $this->db->prepare(self::EARLIEST_TRIP_QUERY);
 
         $this->loadBaseData();
     }
 
     public function getBaseData() {
-        return ["routes" => $this->routes, "stops" => $this->stops, "tracks" => $this->tracks];
+        return ["routes" => $this->routes, "routes_map" => $this->routes_map,
+            "stops" => $this->stops, "tracks" => $this->tracks, "tracks_map" => $this->tracks_map];
     }
-
 
     private function loadBaseData()
     {
@@ -124,6 +143,10 @@ class DataLoader
         return $trips;
     }
 
+    public function getStop(string $stop_id) {
+        return $this->stops[$stop_id];
+    }
+
     public function loadRouteStopTimes(RouteModel $route)
     {
         $this->route_stoptimes_stmt->bind_param("s", $route->getKey());
@@ -155,7 +178,41 @@ class DataLoader
                 new StopTimeModel($trip_id, $stop_id, $track, $stop_sequence, $arrival_time, $departure_time));
         }
 
+
         return $stoptimes;
+    }
+
+    public function loadTripArrivalAtTrack(TripModel $trip, TrackModel $track)
+    {
+        $this->trip_stop_arrival_time_stmt->bind_param($trip->getKey(),$track->getStopId(),
+            $track->getTrackId());
+        $this->trip_stop_arrival_time_stmt->bind_result($hours, $minutes);
+        $this->trip_stop_arrival_time_stmt->execute();
+
+        $this->trip_stop_arrival_time_stmt->fetch();
+
+        $time = Time::from($hours, $minutes);
+
+        return $time;
+    }
+
+    public function findEarliestTrip(RouteModel $route, TrackModel $track, Time $start_time)
+    {
+        $trip = null;
+        $time = null;
+
+        $this->earliest_trip_stmt->bind_param("ssss", $route->getKey(),
+            $start_time->formatDB(), $track->getStopId(), $track->getTrackId());
+        $this->earliest_trip_stmt->bind_result($trip_id, $service_id, $route_id,
+            $trip_name, $wheelchair, $bikes, $hours, $minutes);
+        $this->earliest_trip_stmt->execute();
+
+        if ($this->earliest_trip_stmt->fetch()) {
+            $trip = new TripModel($trip_id, $service_id, $route_id, $trip_name, $wheelchair, $bikes, $this);
+            $time = Time::from($hours, $minutes);
+        }
+
+        return ["trip" => $trip, "time" => $time];
     }
 
 

@@ -4,6 +4,8 @@ namespace src\models;
 
 use src\models\interfaces\DataObject;
 use src\models\interfaces\DataObjectBuilder;
+use src\raptor\Time;
+use src\raptor\Track;
 
 class RouteModel implements DataObject
 {
@@ -13,6 +15,7 @@ class RouteModel implements DataObject
     private $route_name;
 
     private $tracks = null;
+    private $track_indices = [];
     private $dl;
 
     public static function builder(): DataObjectBuilder
@@ -43,12 +46,22 @@ class RouteModel implements DataObject
     public function setTracks(array $tracks)
     {
         $this->tracks = $tracks;
+
+        for ($i = 0; $i < count($tracks); $i++) {
+            $track = $tracks[$i];
+            $this->track_indices[$track->getKey()] = $i;
+        }
     }
 
     public function getTracks(): array
     {
         assert(!empty($tracks));
         return $tracks;
+    }
+
+    public function getTracksFrom(Track $track) {
+        $offset = $this->track_indices[$track->getKey()];
+        return array_slice($this->tracks, $offset);
     }
 
     public function getKey(): string
@@ -66,6 +79,19 @@ class RouteModel implements DataObject
     {
         assert(!empty($this->dl));
         return $this->dl->loadRouteStopTimes($this);
+    }
+
+    public function earliestTripAtTrack(TrackModel $track, Time $start_time)
+    {
+        return $this->dl->findEarliestTrip($this, $track, $start_time);
+    }
+
+    public function trackComesBefore(Track $track1, Track $track2)
+    {
+        $offset1 = $this->track_indices[$track1->getKey()];
+        $offset2 = $this->track_indices[$track2->getKey()];
+
+        return $offset1 < $offset2;
     }
 
 
