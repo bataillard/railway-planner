@@ -141,8 +141,8 @@ CREATE TABLE PassengerItinerary (
     itinerary_id INTEGER,
 
     PRIMARY KEY (passenger_id, itinerary_id),
-    FOREIGN KEY (passenger_id) REFERENCES Passenger(passenger_id),
-    FOREIGN KEY (itinerary_id) REFERENCES Itinerary(itinerary_id)
+    FOREIGN KEY (passenger_id) REFERENCES Passenger(passenger_id) ON DELETE CASCADE,
+    FOREIGN KEY (itinerary_id) REFERENCES Itinerary(itinerary_id) ON DELETE CASCADE
 );
 
 CREATE TABLE VehicleChange (
@@ -166,6 +166,7 @@ CREATE TABLE CyclistReservation (
 
     PRIMARY KEY (passenger_id, itinerary_id),
     FOREIGN KEY (passenger_id, itinerary_id) REFERENCES PassengerItinerary(passenger_id, itinerary_id)
+        ON DELETE CASCADE
 );
 
 CREATE TABLE Patrols (
@@ -185,6 +186,7 @@ CREATE TABLE TicketCheck (
     check_time DATETIME,
 
     PRIMARY KEY (passenger_id, itinerary_id, employee_id),
-    FOREIGN KEY (passenger_id, itinerary_id) REFERENCES PassengerItinerary(passenger_id, itinerary_id),
+    FOREIGN KEY (passenger_id, itinerary_id) REFERENCES PassengerItinerary(passenger_id, itinerary_id)
+        ON DELETE CASCADE,
     FOREIGN KEY (employee_id) REFERENCES TrainGuard(employee_id)
 );

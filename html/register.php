@@ -1,5 +1,6 @@
 <?php
 
+namespace Register;
 use src\models\DataLoader;
 
 require_once "../src/includes/autoload.php";
@@ -92,6 +93,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 </div>
                 <p>Already have an account? <a href="login.php">Login here</a>.</p>
             </form>
+        </div>
+        <div>
+            <?php echo $submit_status; ?>
         </div>
     </main>
 </body>

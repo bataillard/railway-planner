@@ -107,6 +107,22 @@ class DataLoader
         WHERE passenger_id = ? && stop_id = ?
     ";
 
+    private const UPDATE_PASSENGER_NAME = "
+        UPDATE Passenger
+        SET passenger_name = ?
+        WHERE passenger_id = ?
+    ";
+
+    private const UPDATE_PASSENGER_PASS = "
+        UPDATE Passenger
+        SET passenger_password = ?
+        WHERE passenger_id = ?
+    ";
+
+    private const DELETE_PASSENGER = "
+        DELETE FROM Passenger
+        WHERE passenger_id = ?
+    ";
 
 
     // =====================================================================================================
@@ -129,7 +145,8 @@ class DataLoader
 
     private static $instance = null;
 
-    public static function getInstance() {
+    public static function getInstance()
+    {
         if (self::$instance == null) {
             self::$instance = new DataLoader();
         }
@@ -152,7 +169,8 @@ class DataLoader
         $this->trip_stop_arrival_time_stmt = $this->db->prepare(self::TRIP_STOP_ARRIVAL_TIME_QUERY);
     }
 
-    public function getBaseData() {
+    public function getBaseData()
+    {
         if (!$this->data_loaded) {
             $this->loadBaseData();
         }
@@ -199,7 +217,7 @@ class DataLoader
         }
 
         $str = "";
-        foreach($table as $row) {
+        foreach ($table as $row) {
             foreach ($row as $column) {
                 $str .= $column . ",";
             }
@@ -211,8 +229,6 @@ class DataLoader
 
     private function simpleNoReturnResultQuery(string $query, string $format, string ...$values): bool
     {
-        $this->log->critical(implode(" ", $values));
-
         $stmt = null;
         $result = false;
 
@@ -228,7 +244,7 @@ class DataLoader
             }
         }
 
-        $this->log->debug("Executed " . $query . " with result " . $result);
+        $this->log->debug("Executed " . $query . " with result " . $result . " and params ". implode($values));
 
         return $result;
     }
@@ -261,6 +277,18 @@ class DataLoader
         return $result;
     }
 
+    // ===================================================================================================
+
+    private function getStopFromDB(string $stop_id)
+    {
+        $res = $this->simpleGetQuery(self::GET_SINGLE_STOP, "s", $stop_id);
+        if (count($res) > 0) {
+            return $res[0];
+        }
+
+        return null;
+    }
+
     public function getClosestStops(float $lat, float $lon, float $max_dist)
     {
         $results = [];
@@ -291,9 +319,26 @@ class DataLoader
             $username, $name, $password);
     }
 
+    public function updatePassengerPassword(string $id, string $new_password)
+    {
+        return $this->simpleNoReturnResultQuery(self::UPDATE_PASSENGER_PASS, "si",
+            $new_password, $id);
+    }
+
+    public function updatePassengerName(string $passenger_id, string $passenger_name)
+    {
+        return $this->simpleNoReturnResultQuery(self::UPDATE_PASSENGER_NAME, "si",
+            $passenger_name, $passenger_id);
+    }
+
+    public function deletePassenger(string $passenger_id)
+    {
+        return $this->simpleNoReturnResultQuery(self::DELETE_PASSENGER, "i", $passenger_id);
+    }
+
     public function addPassengerStop(string $passenger_id, string $stop_id): bool
     {
-        return $this->simpleNoReturnResultQuery(self::ADD_PASSENGER_STOPS,"is",
+        return $this->simpleNoReturnResultQuery(self::ADD_PASSENGER_STOPS, "is",
             $passenger_id, $stop_id);
     }
 
@@ -302,31 +347,19 @@ class DataLoader
         return $this->simpleGetQuery(self::GET_PASSENGER_STOPS, "i", $passenger_id);
     }
 
-    public function getPassengerStopSingle(int $passenger_id, string $stop_id)
-    {
-        return $this->simpleGetQuery(self::GET_PASSENGER_STOP_SINGLE, "is", $passenger_id, $stop_id);
-    }
-
     public function deletePassengerStop(int $passenger_id, string $stop_id)
     {
-        return $this->simpleNoReturnResultQuery(self::DELETE_PASSENGER_STOP, "is", $passenger_id, $stop_id);
+        return $this->simpleNoReturnResultQuery(self::DELETE_PASSENGER_STOP, "is",
+            $passenger_id, $stop_id);
     }
 
-    private function loadStop(string $stop_id)
-    {
-        $res = $this->simpleGetQuery(self::GET_SINGLE_STOP, "s", $stop_id);
-        if (count($res) > 0) {
-            return $res[0];
-        }
 
-        return null;
-    }
 
     // ====================================================================================================
 
 
     public function getStop(string $stop_id) {
-        return $this->data_loaded ? $this->stops_map[$stop_id] : $this->loadStop($stop_id);
+        return $this->data_loaded ? $this->stops_map[$stop_id] : $this->getStopFromDB($stop_id);
     }
 
     public function loadRouteStopTimes(RouteModel $route)

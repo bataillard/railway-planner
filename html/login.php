@@ -29,7 +29,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
             $_SESSION["loggedin"] = true;
             $_SESSION["id"] = $result["id"];
-            $_SESSION["username"] = $username;
+            $_SESSION["username"] = $result["username"];
+            $_SESSION["name"] = $result["name"];
             header("location: index.php");
         } else {
             $submit_status = "Invalid username or password.";

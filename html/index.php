@@ -23,7 +23,9 @@
 <body>
     <header>
         <h1>Railway Planner</h1>
-        <h2>Hi, <?php echo htmlspecialchars($_SESSION["username"]);?></h2>
+        <h2>Hi, <?php echo htmlspecialchars($_SESSION["name"]);?></h2>
+        <a href="account.php" class="button">Manage your account</a>
+        <a href="logout.php" class="button">Log out</a>
     </header>
     <div class="container">
         <main>

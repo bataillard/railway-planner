@@ -33,6 +33,27 @@
     grid-column-gap: 0.5em;
 }
 
+table {
+    border: none;
+}
+
+table * {
+    font-weight: normal;
+}
+
+table tr:first-child {
+    background-color: silver;
+}
+
+table tr:first-child * {
+    font-weight: bold;
+
+}
+
+table tr:nth-child(even) {
+    background-color: lightgray;
+}
+
 
 
 
