@@ -92,7 +92,7 @@ class DataLoader
         WHERE stop_id = ?
     ";
 
-    const GET_PASSENGER_STOP_SINGLE = "
+    private const GET_PASSENGER_STOP_SINGLE = "
         SELECT *
         FROM PassengerStop
         WHERE passenger_id = ? && stop_id = ?";
@@ -101,6 +101,13 @@ class DataLoader
         INSERT INTO PassengerStop 
         VALUES (?, ?) 
         ON DUPLICATE KEY UPDATE stop_id = stop_id";
+
+    private const DELETE_PASSENGER_STOP = "
+        DELETE FROM PassengerStop
+        WHERE passenger_id = ? && stop_id = ?
+    ";
+
+
 
     // =====================================================================================================
 
@@ -187,7 +194,7 @@ class DataLoader
 
     private function resultToString($table)
     {
-        if ($table == null) {
+        if ($table === null) {
             return "null";
         }
 
@@ -202,7 +209,7 @@ class DataLoader
         return $str;
     }
 
-    private function simpleAddQuery(string $query, string $format, string ...$values): bool
+    private function simpleNoReturnResultQuery(string $query, string $format, string ...$values): bool
     {
         $this->log->critical(implode(" ", $values));
 
@@ -221,6 +228,8 @@ class DataLoader
             }
         }
 
+        $this->log->debug("Executed " . $query . " with result " . $result);
+
         return $result;
     }
 
@@ -235,7 +244,7 @@ class DataLoader
             $stmt->execute();
 
             $sql_res = $stmt->get_result();
-            if ($sql_res->num_rows > 0) {
+            if ($sql_res && $sql_res->num_rows > 0) {
                 $result = $sql_res->fetch_all(MYSQLI_BOTH);
             }
         } catch (mysqli_sql_exception $err) {
@@ -247,7 +256,7 @@ class DataLoader
             }
         }
 
-        $this->log->debug("Fetched: " . $this->resultToString($result));
+        $this->log->debug("Fetched: " . $this->resultToString($result) . " from query " . $query);
 
         return $result;
     }
@@ -268,44 +277,23 @@ class DataLoader
     {
         $res = $this->simpleGetQuery(self::GET_PASSENGER_QUERY, "s", $passenger_username);
         if (count($res) > 0) {
-            return $res;
+            $res = $res[0];
+            return ["id" => $res["passenger_id"], "username" => $res["passenger_username"],
+                "name" => $res["passenger_name"], "password" => $res["passenger_password"]];
         }
 
         return null;
-
-        /*$id = $name = $username = $password = null;
-        $passenger_stmt = null;
-
-        try {
-            $passenger_stmt = $this->db->prepare(self::GET_PASSENGER_QUERY);
-            $passenger_stmt->bind_param("s", $passenger_username);
-            $passenger_stmt->bind_result($id, $username, $name, $password);
-            $passenger_stmt->execute();
-            $passenger_stmt->store_result();
-
-            if ($passenger_stmt->num_rows() > 0) {
-                $passenger_stmt->fetch();
-            }
-        } catch (mysqli_sql_exception $err) {
-            $this->log->error($err->getMessage());
-        } finally {
-            if ($passenger_stmt) {
-                $passenger_stmt->close();
-            }
-        }
-
-        return ["id" => $id, "username" => $username, "name" => $name, "password" => $password];*/
     }
 
     public function addPassenger(string $username, string $name, string $password): bool
     {
-        return $this->simpleAddQuery(self::ADD_PASSENGER_QUERY, "sss",
+        return $this->simpleNoReturnResultQuery(self::ADD_PASSENGER_QUERY, "sss",
             $username, $name, $password);
     }
 
     public function addPassengerStop(string $passenger_id, string $stop_id): bool
     {
-        return $this->simpleAddQuery(self::ADD_PASSENGER_STOPS,"is",
+        return $this->simpleNoReturnResultQuery(self::ADD_PASSENGER_STOPS,"is",
             $passenger_id, $stop_id);
     }
 
@@ -319,6 +307,11 @@ class DataLoader
         return $this->simpleGetQuery(self::GET_PASSENGER_STOP_SINGLE, "is", $passenger_id, $stop_id);
     }
 
+    public function deletePassengerStop(int $passenger_id, string $stop_id)
+    {
+        return $this->simpleNoReturnResultQuery(self::DELETE_PASSENGER_STOP, "is", $passenger_id, $stop_id);
+    }
+
     private function loadStop(string $stop_id)
     {
         $res = $this->simpleGetQuery(self::GET_SINGLE_STOP, "s", $stop_id);
@@ -327,29 +320,6 @@ class DataLoader
         }
 
         return null;
-        /*
-
-        $stmt = null;
-        $result = null;
-
-        try {
-            $stmt = $this->db->prepare(self::GET_SINGLE_STOP);
-            $stmt->bind_param("s", $stop_id);
-            $stmt->execute();
-
-            $sql_res = $stmt->get_result();
-            if ($sql_res->num_rows > 0) {
-                $result = $sql_res->fetch_assoc();
-            }
-        } catch (mysqli_sql_exception $err) {
-            $this->log->error($err->getMessage());
-        } finally {
-            if ($stmt) {
-                $stmt->close();
-            }
-        }
-
-        return $result;*/
     }
 
     // ====================================================================================================
