@@ -19,10 +19,21 @@ class Time
 
     public function formatDB()
     {
-        return date("%H:%i:%s", $this->seconds);
+        return date("H:i:s", $this->seconds);
     }
 
     private function __construct($seconds) { $this->seconds = $seconds; }
+
+    public static function cmp(Time $time1, Time $time2): int
+    {
+        if ($time1->seconds < $time2->seconds) {
+            return -1;
+        } else if ($time1->seconds == $time2->seconds) {
+            return 0;
+        } else {
+            return 1;
+        }
+    }
 
     public function isEarlier(Time $other)
     {

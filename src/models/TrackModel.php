@@ -39,7 +39,7 @@ class TrackModel implements DataObject
         return TrackModel::constructKey($this->stop_id, $this->track);
     }
 
-    public function getStopId(): string
+    public function getStopId()
     {
         return $this->stop_id;
     }
@@ -79,8 +79,5 @@ class TrackModel implements DataObject
     {
         return $this->transfers;
     }
-
-
-
 
 }

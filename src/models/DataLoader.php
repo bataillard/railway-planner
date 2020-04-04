@@ -2,28 +2,44 @@
 
 namespace src\models;
 
+use Monolog\Handler\StreamHandler;
+use Monolog\Logger;
+use mysqli_sql_exception;
 use src\models\interfaces\DataObjectBuilder;
 use src\raptor\Time;
 
 class DataLoader
 {
     private const DB_CFG_PATH = "/../config/db_cfg.ini";
+    private $LOG_PATH = __DIR__ . "/../../log/db.log";
 
     private const ROUTE_QUERY = "SELECT * FROM Route";
     private const STOP_QUERY = "SELECT * FROM Stop";
     private const TRACK_QUERY = "SELECT * FROM Track";
     private const TRANSFER_QUERY = "SELECT * FROM Transfer";
+    private const TRIPS_QUERY = "
+        SELECT route_id, departure_time, 
+               TIME_FORMAT(departure_time, '%H') AS departure_hours,
+               TIME_FORMAT(departure_time, '%i') AS departure_minutes,
+               trip_id, service_id, trip_name, wheelchair_accessible, bikes_allowed
+        FROM Trip T NATURAL JOIN StopTime ST
+        WHERE stop_sequence = 1
+        GROUP BY route_id, departure_time, departure_hours, departure_minutes, trip_id, service_id, trip_name, 
+                 wheelchair_accessible, bikes_allowed
+        ORDER BY departure_time";
 
     private const ROUTE_TRACKS_QUERY = "
-        SELECT DISTINCT R.route_id, ST.stop_id, ST.track, ST.stop_sequence
-        FROM Route R NATURAL JOIN Trip T NATURAL JOIN StopTime ST
-        WHERE route_id LIKE ?
-        ORDER BY ST.stop_sequence;
-    ";
-    private const ROUTE_TRIPS_QUERY = "
-        SELECT *
-        FROM Trip
-        WHERE route_id LIKE ?
+        WITH SingleTripPerRoute AS (
+            SELECT RMain.route_id, TMain.trip_id
+            FROM Route RMain NATURAL JOIN Trip TMain INNER JOIN (
+                    SELECT route_id, GROUP_CONCAT(trip_id ORDER BY trip_id) AS grouped_trip_ids
+                    FROM Route R NATURAL JOIN Trip T
+                    GROUP BY R.route_id) GroupedRouteTrips
+                ON RMain.route_id = GroupedRouteTrips.route_id 
+                   AND FIND_IN_SET(TMain.trip_id, grouped_trip_ids) BETWEEN 1 AND 1)
+        SELECT DISTINCT STPR.route_id, ST.stop_id, ST.track, ST.stop_sequence
+        FROM SingleTripPerRoute STPR NATURAL JOIN StopTime ST
+        ORDER BY STPR.route_id, ST.stop_sequence;
     ";
 
     private const ROUTE_STOPTIMES_QUERY = "
@@ -41,27 +57,59 @@ class DataLoader
     ";
 
     private const TRIP_STOP_ARRIVAL_TIME_QUERY = "
-        SELECT DISTINCT TIME_FORMAT(arrival_time, \"%H\"), TIME_FORMAT(arrival_time, \"%i\")
+        SELECT DISTINCT TIME_FORMAT(arrival_time, '%H'), TIME_FORMAT(arrival_time, '%i')
         FROM Trip T NATURAL JOIN StopTime ST
         WHERE trip_id LIKE ? AND stop_id LIKE ? AND track LIKE ?;
     ";
 
-    private const EARLIEST_TRIP_QUERY = "
-        SELECT ST.trip_id, TIME_FORMAT(MIN(ST.departure_time), \"%H\"), TIME_FORMAT(MIN(ST.departure_time), \"%i\")
-        FROM Route R NATURAL JOIN Trip T NATURAL JOIN StopTime ST
-        WHERE route_id LIKE ? AND ST.departure_time >= ?  AND ST.stop_id LIKE ? AND ST.track LIKE ?
-        GROUP BY ST.trip_id, ST.departure_time
-        ORDER BY ST.departure_time
-        LIMIT 1;
+    // =====================================================================================================
+
+    private const CLOSEST_STOPS = "
+        SELECT stop_id, stop_name, stop_lat, stop_long,
+               (2 * 6371 * ASIN(SQRT(
+                   POW(SIN((RADIANS(stop_lat) - targ_lat) / 2), 2) +
+                   COS(RADIANS(stop_lat)) * COS(targ_lat) * POW(SIN((RADIANS(stop_long) - targ_long) / 2), 2))))
+                    AS distance
+        FROM Stop CROSS JOIN (SELECT RADIANS(?) AS targ_lat, RADIANS(?) AS targ_long) Target
+        HAVING distance < ?
+        ORDER BY distance
+        LIMIT 0, 25";
+
+    private const GET_PASSENGER_QUERY = "SELECT * FROM Passenger where passenger_username LIKE ?;";
+
+    private const ADD_PASSENGER_QUERY = "
+        INSERT INTO Passenger (passenger_username, passenger_name, passenger_password) 
+        VALUES (?, ?, ?)";
+
+    private const GET_PASSENGER_STOPS = "
+        SELECT S.*
+        FROM PassengerStop PS NATURAL JOIN Stop S 
+        WHERE PS.passenger_id = ?";
+
+    private const GET_SINGLE_STOP = "
+        SELECT * 
+        FROM Stop 
+        WHERE stop_id = ?
     ";
 
+    const GET_PASSENGER_STOP_SINGLE = "
+        SELECT *
+        FROM PassengerStop
+        WHERE passenger_id = ? && stop_id = ?";
+
+    private const ADD_PASSENGER_STOPS = "
+        INSERT INTO PassengerStop 
+        VALUES (?, ?) 
+        ON DUPLICATE KEY UPDATE stop_id = stop_id";
+
+    // =====================================================================================================
+
     private $db;
-    private $route_tracks_stmt;
-    private $route_trips_stmt;
+    private $log;
+    private $data_loaded = false;
     private $route_stoptimes_stmt;
     private $trip_stoptimes_stmt;
     private $trip_stop_arrival_time_stmt;
-    private $earliest_trip_stmt;
 
     private $routes;
     private $routes_map;
@@ -69,6 +117,8 @@ class DataLoader
     private $stops_map;
     private $tracks;
     private $tracks_map;
+    private $trips;
+    private $trips_map;
 
     private static $instance = null;
 
@@ -87,69 +137,232 @@ class DataLoader
         mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
 
         $this->db = mysqli_connect($cfg["host"], $cfg["user"], $cfg["password"], $cfg["database"]);
+        $this->log = new Logger('DataLoader');
+        $this->log->pushHandler(new StreamHandler($this->LOG_PATH, Logger::DEBUG));
 
-        $this->route_tracks_stmt = $this->db->prepare(self::ROUTE_TRACKS_QUERY);
-        $this->route_trips_stmt = $this->db->prepare(self::ROUTE_TRIPS_QUERY);
         $this->route_stoptimes_stmt = $this->db->prepare(self::ROUTE_STOPTIMES_QUERY);
         $this->trip_stoptimes_stmt = $this->db->prepare(self::TRIP_STOPTIMES_QUERY);
         $this->trip_stop_arrival_time_stmt = $this->db->prepare(self::TRIP_STOP_ARRIVAL_TIME_QUERY);
-        $this->earliest_trip_stmt = $this->db->prepare(self::EARLIEST_TRIP_QUERY);
-
-        $this->loadBaseData();
     }
 
     public function getBaseData() {
+        if (!$this->data_loaded) {
+            $this->loadBaseData();
+        }
+
         return ["routes" => $this->routes, "routes_map" => $this->routes_map,
             "stops" => $this->stops, "tracks" => $this->tracks, "tracks_map" => $this->tracks_map];
     }
 
     private function loadBaseData()
     {
-        $routes_res = $this->loadDataObject(self::ROUTE_QUERY, RouteModel::builder());;
-        $this->routes = &$routes_res["data"];
-        $this->routes_map = &$routes_res["data_map"];
+        $routes_res = $this->loadDataObject(self::ROUTE_QUERY, RouteModel::builder());
+        $this->routes = $routes_res["data"];
+        $this->routes_map = $routes_res["data_map"];
 
         $stops_res = $this->loadDataObject(self::STOP_QUERY, StopModel::builder());
-        $this->stops = &$stops_res["data"];
-        $this->stops_map = &$stops_res["data_map"];
+        $this->stops = $stops_res["data"];
+        $this->stops_map = $stops_res["data_map"];
 
-        $tracks_res = $this->loadDataObject(self::TRACK_QUERY, TrackModel::builder());;
-        $this->tracks = &$tracks_res["data"];
-        $this->tracks_map = &$tracks_res["data_map"];
+        $tracks_res = $this->loadDataObject(self::TRACK_QUERY, TrackModel::builder());
+        $this->tracks = $tracks_res["data"];
+        $this->tracks_map = $tracks_res["data_map"];
+
+        $trips_res = $this->loadDataObject(self::TRIPS_QUERY, TripModel::builder());
+        $this->trips = $trips_res["data"];
+        $this->trips_map = $trips_res["data_map"];
+
+        echo "Finished initial loading\n";
 
         $this->linkTrackStops();
         $this->addTrackTransfers();
-
         $this->linkRouteTracks();
-        $this->addStopTimes();
+        $this->addRouteTrips();
+
+        echo "Loading and linking complete\n";
+        $this->data_loaded = true;
     }
 
-    public function loadTrips(RouteModel $route)
+    // ===================================================================================================
+
+    private function resultToString($table)
     {
-        $this->route_trips_stmt->bind_param("s", $route->getKey());
-        $this->route_trips_stmt->bind_result($trip_id, $service_id, $route_id,
-            $trip_name, $wheelchair, $bikes);
-        $this->route_trips_stmt->execute();
-
-        $trips = [];
-
-        while ($this->route_trips_stmt->fetch()) {
-            $route = $this->routes_map[$route->getKey()];
-
-            array_push($trips,
-                new TripModel($trip_id, $service_id, $trip_name, $wheelchair, $bikes, $route, $this));
+        if ($table == null) {
+            return "null";
         }
 
-        return $trips;
+        $str = "";
+        foreach($table as $row) {
+            foreach ($row as $column) {
+                $str .= $column . ",";
+            }
+            $str .= "|";
+        }
+
+        return $str;
     }
 
+    private function simpleAddQuery(string $query, string $format, string ...$values): bool
+    {
+        $this->log->critical(implode(" ", $values));
+
+        $stmt = null;
+        $result = false;
+
+        try {
+            $stmt = $this->db->prepare($query);
+            $stmt->bind_param($format, ...$values);
+            $result = $stmt->execute();
+        } catch (mysqli_sql_exception $err) {
+            $this->log->error($err->getMessage());
+        } finally {
+            if ($stmt) {
+                $stmt->close();
+            }
+        }
+
+        return $result;
+    }
+
+    private function simpleGetQuery(string $query, string $format, string ...$params): array
+    {
+        $stmt = null;
+        $result = [];
+
+        try {
+            $stmt = $this->db->prepare($query);
+            $stmt->bind_param($format, ...$params);
+            $stmt->execute();
+
+            $sql_res = $stmt->get_result();
+            if ($sql_res->num_rows > 0) {
+                $result = $sql_res->fetch_all(MYSQLI_BOTH);
+            }
+        } catch (mysqli_sql_exception $err) {
+            $this->log->error($err->getMessage());
+            $result = null;
+        } finally {
+            if ($stmt) {
+                $stmt->close();
+            }
+        }
+
+        $this->log->debug("Fetched: " . $this->resultToString($result));
+
+        return $result;
+    }
+
+    public function getClosestStops(float $lat, float $lon, float $max_dist)
+    {
+        $results = [];
+        $res = $this->simpleGetQuery(self::CLOSEST_STOPS, "ddd", $lat, $lon, $max_dist);
+        foreach ($res as $row) {
+            array_push($results, ["id" => $row["stop_id"], "name" => $row["stop_name"],
+                "latitude" => $row["stop_lat"], "longitude" => $row["stop_long"], "distance" => $row["distance"]]);
+        }
+
+        return $results;
+    }
+
+    public function getPassenger(string $passenger_username)
+    {
+        $res = $this->simpleGetQuery(self::GET_PASSENGER_QUERY, "s", $passenger_username);
+        if (count($res) > 0) {
+            return $res;
+        }
+
+        return null;
+
+        /*$id = $name = $username = $password = null;
+        $passenger_stmt = null;
+
+        try {
+            $passenger_stmt = $this->db->prepare(self::GET_PASSENGER_QUERY);
+            $passenger_stmt->bind_param("s", $passenger_username);
+            $passenger_stmt->bind_result($id, $username, $name, $password);
+            $passenger_stmt->execute();
+            $passenger_stmt->store_result();
+
+            if ($passenger_stmt->num_rows() > 0) {
+                $passenger_stmt->fetch();
+            }
+        } catch (mysqli_sql_exception $err) {
+            $this->log->error($err->getMessage());
+        } finally {
+            if ($passenger_stmt) {
+                $passenger_stmt->close();
+            }
+        }
+
+        return ["id" => $id, "username" => $username, "name" => $name, "password" => $password];*/
+    }
+
+    public function addPassenger(string $username, string $name, string $password): bool
+    {
+        return $this->simpleAddQuery(self::ADD_PASSENGER_QUERY, "sss",
+            $username, $name, $password);
+    }
+
+    public function addPassengerStop(string $passenger_id, string $stop_id): bool
+    {
+        return $this->simpleAddQuery(self::ADD_PASSENGER_STOPS,"is",
+            $passenger_id, $stop_id);
+    }
+
+    public function getPassengerStops(int $passenger_id)
+    {
+        return $this->simpleGetQuery(self::GET_PASSENGER_STOPS, "i", $passenger_id);
+    }
+
+    public function getPassengerStopSingle(int $passenger_id, string $stop_id)
+    {
+        return $this->simpleGetQuery(self::GET_PASSENGER_STOP_SINGLE, "is", $passenger_id, $stop_id);
+    }
+
+    private function loadStop(string $stop_id)
+    {
+        $res = $this->simpleGetQuery(self::GET_SINGLE_STOP, "s", $stop_id);
+        if (count($res) > 0) {
+            return $res[0];
+        }
+
+        return null;
+        /*
+
+        $stmt = null;
+        $result = null;
+
+        try {
+            $stmt = $this->db->prepare(self::GET_SINGLE_STOP);
+            $stmt->bind_param("s", $stop_id);
+            $stmt->execute();
+
+            $sql_res = $stmt->get_result();
+            if ($sql_res->num_rows > 0) {
+                $result = $sql_res->fetch_assoc();
+            }
+        } catch (mysqli_sql_exception $err) {
+            $this->log->error($err->getMessage());
+        } finally {
+            if ($stmt) {
+                $stmt->close();
+            }
+        }
+
+        return $result;*/
+    }
+
+    // ====================================================================================================
+
+
     public function getStop(string $stop_id) {
-        return $this->stops[$stop_id];
+        return $this->data_loaded ? $this->stops_map[$stop_id] : $this->loadStop($stop_id);
     }
 
     public function loadRouteStopTimes(RouteModel $route)
     {
-        $this->route_stoptimes_stmt->bind_param("s", $route->getKey());
+        $route_id = $route->getKey();
+        $this->route_stoptimes_stmt->bind_param("s", $route_id);
         $this->route_stoptimes_stmt->bind_result($trip_id, $stop_id, $track,
             $stop_sequence, $arrival_time, $departure_time);
         $this->route_stoptimes_stmt->execute();
@@ -166,7 +379,8 @@ class DataLoader
 
     public function loadTripStopTimes(TripModel $trip)
     {
-        $this->trip_stoptimes_stmt->bind_param("s", $trip->getKey());
+        $trip_id = $trip->getKey();
+        $this->trip_stoptimes_stmt->bind_param("s", $trip_id);
         $this->trip_stoptimes_stmt->bind_result($trip_id, $stop_id, $track,
             $stop_sequence, $arrival_time, $departure_time);
         $this->trip_stoptimes_stmt->execute();
@@ -182,37 +396,16 @@ class DataLoader
         return $stoptimes;
     }
 
-    public function loadTripArrivalAtTrack(TripModel $trip, TrackModel $track)
+    public function loadTripArrivalAtTrack(TripModel $trip, $track): Time
     {
-        $this->trip_stop_arrival_time_stmt->bind_param($trip->getKey(),$track->getStopId(),
-            $track->getTrackId());
+        $trip_id = $trip->getKey(); $stop_id = $track->getStopId(); $track_id = $track->getTrackId();
+        $this->trip_stop_arrival_time_stmt->bind_param("sss", $trip_id,$stop_id, $track_id);
         $this->trip_stop_arrival_time_stmt->bind_result($hours, $minutes);
         $this->trip_stop_arrival_time_stmt->execute();
 
         $this->trip_stop_arrival_time_stmt->fetch();
 
-        $time = Time::from($hours, $minutes);
-
-        return $time;
-    }
-
-    public function findEarliestTrip(RouteModel $route, TrackModel $track, Time $start_time)
-    {
-        $trip = null;
-        $time = null;
-
-        $this->earliest_trip_stmt->bind_param("ssss", $route->getKey(),
-            $start_time->formatDB(), $track->getStopId(), $track->getTrackId());
-        $this->earliest_trip_stmt->bind_result($trip_id, $service_id, $route_id,
-            $trip_name, $wheelchair, $bikes, $hours, $minutes);
-        $this->earliest_trip_stmt->execute();
-
-        if ($this->earliest_trip_stmt->fetch()) {
-            $trip = new TripModel($trip_id, $service_id, $route_id, $trip_name, $wheelchair, $bikes, $this);
-            $time = Time::from($hours, $minutes);
-        }
-
-        return ["trip" => $trip, "time" => $time];
+        return Time::from($hours, $minutes);
     }
 
 
@@ -260,31 +453,23 @@ class DataLoader
 
     private function linkRouteTracks()
     {
-        foreach ($this->routes as $route) {
-            $route_id = $route->getKey();
+            $result = $this->db->query(self::ROUTE_TRACKS_QUERY);
 
-            $this->route_tracks_stmt->bind_param("s", $route_id);
-            $this->route_tracks_stmt->bind_result($unused, $stop_id, $track, $sequence);
-            $this->route_tracks_stmt->execute();
-
-            $tracks = [];
-
-            while ($this->route_tracks_stmt->fetch()) {
-                $track_key = TrackModel::constructKey($stop_id, $track);
+            while ($row = $result->fetch_assoc()) {
+                $route = $this->routes_map[$row["route_id"]];
+                $track_key = TrackModel::constructKey($row["stop_id"], $row["track"]);
                 $track = $this->tracks_map[$track_key];
 
+                $route->addTrack($track);
                 $track->addRoute($route);
-                array_push($tracks, $track);
             }
-
-            $route->setTracks($tracks);
-        }
     }
 
-    private function addStopTimes()
+    private function addRouteTrips()
     {
-        foreach ($this->routes as $route) {
-            $route->addDataLoader($this);
+        foreach ($this->trips as $trip) {
+            $route = $this->routes_map[$trip->getRouteId()];
+            $route->addTrip($trip);
         }
     }
 }

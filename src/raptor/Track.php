@@ -15,6 +15,7 @@ class Track
     private $is_marked;
     private $earliest_time;
     private $earliest_time_by_round;
+    private $connections_by_round = [];
 
     public static function withEarliestTime(Track ...$tracks)
     {
@@ -53,24 +54,6 @@ class Track
         return $this->earliest_time->isEarlier($other->earliest_time);
     }
 
-    public function improveTrip(int $round, TripModel $current_trip, Track $target_track) {
-        $improved = false;
-
-        if ($current_trip != null) {
-            $trip_time = $current_trip->timeAtTrack($this->model);
-            $earliest_time = Track::withEarliestTime($this, $target_track)->getEarliestTime();
-
-            if ($trip_time->isEarlier($earliest_time)) {
-                $improved = true;
-
-                $this->earliest_time_by_round[$round] = $trip_time;
-                $this->earliest_time = $trip_time;
-            }
-        }
-
-        return $improved;
-    }
-
     public function getEarliestTime()
     {
         return $this->earliest_time;
@@ -85,29 +68,48 @@ class Track
         }
     }
 
-    public function findEarlierTrip(int $round, RouteModel $route, TripModel $current_trip)
+    public function getConnectionAtRound(int $round): Connection
     {
-        $time_at_prev_round = $this->getTimeAtRound($round - 1);
-
-        $et = $route->earliestTripAtTrack($this->model, $time_at_prev_round);
-        $et_trip = $et["trip"];
-        $et_time = $et["time"];
-
-        if ($et_trip != null && $et_time != null && $time_at_prev_round->notLater($et_time)) {
-            return $et_trip;
-        }
-
-        return $current_trip;
+        return $this->connections_by_round[$round];
     }
 
-    public function improveTime(int $round, Time $time)
+    public function improveTransfer(int $round, Time $time, TrackModel $from_track)
     {
         if ($time->isEarlier($this->earliest_time)) {
             $this->earliest_time_by_round[$round] = $time;
+            $this->connections_by_round[$round] = new Connection(Connection::FOOT_CONNECTION_TAG, $from_track, $this);
             return true;
         }
 
         return false;
     }
 
+    public function improveTrip(int $round, $current_trip, Track $destination_track, $boarded_track) {
+        $improved = false;
+
+        if ($current_trip != null) {
+            $trip_time = $current_trip->timeAtTrack($this->model);
+            $earliest_time = Track::withEarliestTime($this, $destination_track)->getEarliestTime();
+
+            if ($trip_time->isEarlier($earliest_time)) {
+                $improved = true;
+
+                $this->earliest_time_by_round[$round] = $trip_time;
+                $this->connections_by_round[$round] = new Connection($current_trip, $this, $boarded_track);
+                $this->earliest_time = $trip_time;
+            }
+        }
+
+        return $improved;
+    }
+
+    public function timeAtTrip(TripModel $trip)
+    {
+        return $trip->timeAtTrack($this->model);
+    }
+
+    public function __toString()
+    {
+        return "Stop " . $this->model->getStopId() . " track " . $this->model->getTrackId();
+    }
 }

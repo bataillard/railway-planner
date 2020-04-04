@@ -4,12 +4,13 @@
 namespace src\raptor;
 
 
-use DateTime;
 use src\models\DataLoader;
 use src\models\StopModel;
 
 class Pathfinder
 {
+    private const MAX_ROUNDS = 50;
+
     private $dl;
 
     private $routes;
@@ -21,9 +22,11 @@ class Pathfinder
     private $tracks = [];
     private $tracks_map = [];
     private $marked_tracks = [];
-    private $source_track = null;
-    private $target_track = null;
-    private $departure_time;
+    private $origin_track = null;
+    private $destination_track = null;
+    private $departure_time = null;
+    private $route_scanner = null;
+    private $results = null;
 
     public function __construct()
     {
@@ -35,37 +38,47 @@ class Pathfinder
         $this->track_models = $data["tracks"];
     }
 
-    private function initializeData(StopModel $source_model, StopModel $target_model, int $dep_hour, int $dep_minute)
+    private function initializeData(StopModel $origin_model, StopModel $dest_model, int $dep_hour, int $dep_minute)
     {
         $this->departure_time = Time::from($dep_hour, $dep_minute);
 
-        $source_track = $source_model->getTracks()[0];
-        $target_track = $target_model->getTracks()[0];
+        $origin_track = $origin_model->getTracks()[0];
+        $destination_track = $dest_model->getTracks()[0];
 
         foreach ($this->track_models as $track_model) {
             $track = new Track($track_model, $this->departure_time);
             array_push($this->tracks, $track);
             $this->tracks_map[$track->getKey()] = $track;
 
-            if ($source_track->getKey() == $track->getKey()) {
-                $this->source_track = $track;
+            if ($origin_track->getKey() == $track->getKey()) {
+                $this->origin_track = $track;
             }
 
-            if ($target_track->getKey() == $track->getKey()) {
-                $this->target_track = $track;
+            if ($destination_track->getKey() == $track->getKey()) {
+                $this->destination_track = $track;
             }
         }
 
         $this->marked_tracks = $this->tracks;
+        $this->route_scanner = new RouteScanner($this->routes, $this->routes_map);
     }
 
-    public function pathfind(StopModel $source_model, StopModel $target_model, int $dep_hour, int $dep_minute)
+    public function pathfind(StopModel $origin_model, StopModel $destination_model, int $dep_hour, int $dep_minute)
     {
-        $this->initializeData($source_model, $target_model, $dep_hour, $dep_minute);
+        echo "Starting pathfinding from " . $origin_model->getKey()
+            . " to " . $destination_model->getKey()
+            . " at time " . $dep_hour . ":" . $dep_minute . "\n";
+
+        $this->initializeData($origin_model, $destination_model, $dep_hour, $dep_minute);
         $round = 1; // Round 0 was completed in initialization
 
         do {
+            echo "Start of pathfinding round " . $round . "\n";
+
             $result_set = [];
+
+            $timit = microtime(true);
+            echo "\tRound " . $round . ": start of phase 1\n" ;
 
             // Accumulate routes serving marked tracks from previous round
             foreach ($this->marked_tracks as $marked_track) {
@@ -82,25 +95,45 @@ class Pathfinder
                 }
             }
 
+            echo "\tRound " . $round . ": end of phase 1 - time taken: " . (microtime(true) - $timit) . "\n";
+
             $this->marked_tracks = [];
 
+            $timit = microtime(true);
+            echo "\tRound " . $round . ": start of phase 2\n" ;
+
             // Traverse each route
-            foreach ($result_set as $route_id => $track) {
+            foreach ($result_set as $route_id => $start_track) {
                 $route = $this->routes_map[$route_id];
                 $current_trip = null;
+                $boarded_track = null;
 
-                foreach ($route->tracksFrom($track) as $next_track) {
-                    // Can the label on that track be improved in this round?
-                    $improved = $next_track->improveTrip($round, $current_trip, $this->target_track);
+                $route_tracks = $route->getTracks();
+                $size = count($route_tracks);
+                $offset = $route->getOffsetFrom($start_track);
 
+                for ($i = $offset; $i < $size; $i++) {
+                    $next_track_model = $route_tracks[$i];
+                    $track = $this->tracks_map[$next_track_model->getKey()];
+                    $previous_arrival = $track->getTimeAtRound($round - 1);
+
+                    $improved = $track->improveTrip($round, $current_trip, $this->destination_track, $boarded_track);
                     if ($improved) {
-                        array_push($this->marked_tracks, $next_track);
+                        array_push($this->marked_tracks, $track);
                     }
 
-                    // Can we catch an earlier trip at next_track?
-                    $current_trip = $next_track->findEarlierTrip($round, $route, $current_trip);
+                    if (!$current_trip || $previous_arrival->isEarlier($track->timeAtTrip($current_trip))) {
+                        $current_trip = $this->route_scanner->getEarliestTrip($route, $track, $previous_arrival);
+                        $boarded_track = $track;
+                    }
                 }
             }
+
+            echo "\tRound " . $round . ": end of phase 2 - time taken: " . (microtime(true) - $timit) . "\n";
+
+            $timit = microtime(true);
+            echo "\tRound " . $round . ": start of phase 3\n" ;
+
 
             // Look at foot-paths
             foreach ($this->marked_tracks as $marked_track) {
@@ -108,16 +141,19 @@ class Pathfinder
                     $to_track = $this->tracks_map[$transfer->getToTrack()->getKey()];
                     $time = $marked_track->getTimeAtRound($round)->add($transfer->getTransferTime());
 
-                    $improved = $to_track->improveTime($round, $time);
+                    $improved = $to_track->improveTransfer($round, $time, $marked_track);
                     if ($improved) {
                         array_push($this->marked_tracks, $to_track);
                     }
                 }
             }
 
+            echo "\tRound " . $round . ": end of phase 3 - time taken: " . (microtime(true) - $timit) . "\n";
+            echo "Finished pathfinding round " . $round . "\n";
             $round++;
-        } while (empty($marked_track));
+        } while (!empty($marked_track) && $round < self::MAX_ROUNDS);
 
-        return $result_set;
+        return new PathfinderResults($round, $this->tracks,
+            $this->origin_track, $this->destination_track, $this->departure_time);
     }
 }

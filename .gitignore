@@ -1,6 +1,10 @@
 # Ignore the data directory, since it is too large to fit on github
 data
 config/db_cfg.ini
+log/*
+vendor/*
+composer.json
+composer.lock
 
 
 # Created by https://www.gitignore.io/api/phpstorm

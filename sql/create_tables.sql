@@ -106,13 +106,24 @@ CREATE TABLE StopTime (
 
 CREATE TABLE Passenger (
     passenger_id INTEGER PRIMARY KEY AUTO_INCREMENT,
+    passenger_username VARCHAR(200),
     passenger_name VARCHAR(200),
     passenger_password VARCHAR(255)
+);
+
+CREATE TABLE PassengerStop (
+    passenger_id INTEGER,
+    stop_id VARCHAR(50),
+
+    PRIMARY KEY (passenger_id, stop_id),
+    FOREIGN KEY (passenger_id) REFERENCES Passenger(passenger_id) ON DELETE CASCADE,
+    FOREIGN KEY (stop_id) REFERENCES Stop(stop_id)
 );
 
 CREATE TABLE TrainGuard (
     employee_id INTEGER PRIMARY KEY AUTO_INCREMENT,
     agency_id VARCHAR(50) NOT NULL,
+    employee_username VARCHAR(200),
     employee_name VARCHAR(200),
     employee_password VARCHAR(255)
 );

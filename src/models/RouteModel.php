@@ -14,8 +14,13 @@ class RouteModel implements DataObject
     private $route_type;
     private $route_name;
 
-    private $tracks = null;
+    private $tracks = [];
     private $track_indices = [];
+    private $n_tracks = 0;
+
+    private $trips = [];
+    private $trips_finalized = false;
+
     private $dl;
 
     public static function builder(): DataObjectBuilder
@@ -38,30 +43,21 @@ class RouteModel implements DataObject
         $this->dl = $dl;
     }
 
-    public function addDataLoader(DataLoader $dl)
+    public function addTrack(TrackModel $track)
     {
-        $this->dl = $dl;
-    }
-
-    public function setTracks(array $tracks)
-    {
-        $this->tracks = $tracks;
-
-        for ($i = 0; $i < count($tracks); $i++) {
-            $track = $tracks[$i];
-            $this->track_indices[$track->getKey()] = $i;
-        }
+        array_push($this->tracks, $track);
+        $this->track_indices[$track->getKey()] = $this->n_tracks;
+        $this->n_tracks++;
     }
 
     public function getTracks(): array
     {
-        assert(!empty($tracks));
-        return $tracks;
+        assert(!empty($this->tracks));
+        return $this->tracks;
     }
 
-    public function getTracksFrom(Track $track) {
-        $offset = $this->track_indices[$track->getKey()];
-        return array_slice($this->tracks, $offset);
+    public function getOffsetFrom(Track $track) {
+        return $this->track_indices[$track->getKey()];
     }
 
     public function getKey(): string
@@ -71,19 +67,23 @@ class RouteModel implements DataObject
 
     public function getTrips(): array
     {
-        assert(!empty($this->dl));
-        return $this->dl->loadTrips($this);
+        return $this->trips;
+    }
+
+    public function addTrip(TripModel $trip)
+    {
+        array_push($this->trips, $trip);
+    }
+
+    public function numberOfTrips(): int
+    {
+        return count($this->trips);
     }
 
     public function getStopTimes(): array
     {
         assert(!empty($this->dl));
         return $this->dl->loadRouteStopTimes($this);
-    }
-
-    public function earliestTripAtTrack(TrackModel $track, Time $start_time)
-    {
-        return $this->dl->findEarliestTrip($this, $track, $start_time);
     }
 
     public function trackComesBefore(Track $track1, Track $track2)
