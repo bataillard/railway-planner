@@ -438,7 +438,7 @@ class DataLoader
         }
         $clean_routes = rtrim($clean_routes, ",");
 
-        $group_by = "agency_name";
+        $group_by = "agency_name, route_type, route_name, route_id";
         $order_by = "";
         $select = "route_type, route_name, route_id, agency_name";
         if ($join == "Trip") {
@@ -449,6 +449,7 @@ class DataLoader
             $order_by = "ORDER BY earliest_departure";
         }
 
+
         $query = "         
             SELECT DISTINCT $select
             FROM Route NATURAL JOIN $join 
@@ -456,6 +457,7 @@ class DataLoader
             GROUP BY $group_by
             $order_by
             LIMIT 30;";
+
 
         try {
             $result = $this->db->query($query);
