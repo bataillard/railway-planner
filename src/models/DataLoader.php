@@ -188,7 +188,7 @@ class DataLoader
 
         $this->db = mysqli_connect($cfg["host"], $cfg["user"], $cfg["password"], $cfg["database"]);
         $this->log = new Logger('DataLoader');
-        $this->log->pushHandler(new StreamHandler($this->LOG_PATH, Logger::DEBUG));
+        $this->log->pushHandler(new StreamHandler($this->LOG_PATH, Logger::WARNING));
 
         $this->route_stoptimes_stmt = $this->db->prepare(self::ROUTE_STOPTIMES_QUERY);
         $this->trip_stoptimes_stmt = $this->db->prepare(self::TRIP_STOPTIMES_QUERY);
@@ -401,7 +401,9 @@ class DataLoader
                 FROM Trip NATURAL JOIN StopTime
                 WHERE stop_id IN ($clean_stops)
                 GROUP BY trip_id
-                HAVING COUNT(stop_id) = $count);
+                HAVING COUNT(stop_id) = $count)
+            ORDER BY RAND()
+            LIMIT 50;
         ";
 
         try {
@@ -426,6 +428,47 @@ class DataLoader
     public function getSingleRouteTracks(string $route_id)
     {
         return $this->simpleGetQuery(self::SINGLE_ROUTE_TRACKS_QUERY, "s", $route_id);
+    }
+
+    public function joinRoutesOn($route_ids, $join)
+    {
+        $clean_routes = "";
+        foreach ($route_ids as $route_id) {
+            $clean_routes .= '"' . $this->db->escape_string($route_id) . '",';
+        }
+        $clean_routes = rtrim($clean_routes, ",");
+
+        $group_by = "agency_name";
+        $order_by = "";
+        $select = "route_type, route_name, route_id, agency_name";
+        if ($join == "Trip") {
+            $select = "route_type, route_name, route_id, trip_id, trip_name, headsign, MIN(departure_time) 
+                AS earliest_departure";
+            $join = "Trip NATURAL JOIN TripName NATURAL JOIN StopTime";
+            $group_by = "route_type, route_name, route_id, trip_id, trip_name, headsign";
+            $order_by = "ORDER BY earliest_departure";
+        }
+
+        $query = "         
+            SELECT DISTINCT $select
+            FROM Route NATURAL JOIN $join 
+            WHERE route_id IN ($clean_routes)
+            GROUP BY $group_by
+            $order_by
+            LIMIT 30;";
+
+        try {
+            $result = $this->db->query($query);
+            $res = [];
+            while ($row = $result->fetch_assoc()) {
+                array_push($res, $row);
+            }
+        } catch (mysqli_sql_exception $err) {
+            $this->log->error($err->getMessage());
+            $res = null;
+        }
+
+        return $res;
     }
 
 

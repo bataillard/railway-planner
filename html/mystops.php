@@ -21,6 +21,10 @@ const MY_STOPS_ACTION_FIND_ROUTES = "find_routes";
 const ROUTE_SELECT = "route_select";
 const ROUTE_SELECT_ACTION_ID = "routes";
 const ROUTE_SELECT_ACTION_FIND_STOPS = "find_stops";
+const ROUTE_SELECT_ACTION_JOIN_ON = "join_on";
+const ROUTE_SELECT_ACTION_JOIN_ON_TYPE = "join_on_table";
+const ROUTE_SELECT_ACTION_JOIN_ON_AGENCY = "Agency";
+const ROUTE_SELECT_ACTION_JOIN_ON_TRIPS = "Trip";
 
 $stop_save_error = ""; // Used in findstops.php
 function getStopSaveErr() { global $stop_save_error; return $stop_save_error; }
@@ -50,9 +54,9 @@ function sanitize_data_object($data, $name, $max_length, callable $predicate)
     foreach ($data as $unclean_stop) {
         $stop = $stop_err = "";
         $valid &= test_input($unclean_stop, $stop, $stop_err, $name,
-            function ($s) use ($predicate) {
+            function ($s) use ($max_length, $predicate) {
                 return 0 < strlen($s)
-                    && strlen($s) < MAX_STOP_ID_LENGTH
+                    && strlen($s) < $max_length
                     && call_user_func_array($predicate, [$s]);
             });
         array_push($stops, $stop);
@@ -151,11 +155,20 @@ function handle_stops_find_routes($data) {
                 <div class='table-scroll-container'>
                     $table
                 </div>
-                <input type='hidden' id='submit-action' name='". ROUTE_SELECT_ACTION_ID ."' value='true'/>
+                <input type='hidden' id='route-submit-action' name='". ROUTE_SELECT_ACTION_ID ."' value='true'/>
                 <button type='submit' 
-                    onclick='$(\"submit-action\").value = \"". ROUTE_SELECT_ACTION_FIND_STOPS ."\"'>
+                    onclick='$(\"route-submit-action\").value = \"". ROUTE_SELECT_ACTION_FIND_STOPS ."\"'>
                     Find Stops
                 </button>
+                <button type='submit' 
+                    onclick='$(\"route-submit-action\").value = \"" . ROUTE_SELECT_ACTION_JOIN_ON ."\"'>
+                    Join on
+                </button>
+                <label for='join_select'>Table:</label>
+                <select id=join_select' name=". ROUTE_SELECT_ACTION_JOIN_ON_TYPE .">
+                    <option value=". ROUTE_SELECT_ACTION_JOIN_ON_AGENCY . ">Agency</option>
+                    <option value=". ROUTE_SELECT_ACTION_JOIN_ON_TRIPS . ">Trips</option>
+                </select>
             </form>";
 
         }
@@ -173,8 +186,6 @@ function handle_routes_find_stops($data) {
     $valid = $sanitized["valid"];
     $route_ids = $sanitized["data"];
     $route_errs = $sanitized["errors"];
-
-    echo "OKEKEK";
 
     foreach ($route_errs as $err) {
         $route_stops_err .= "<p>$err</p>";
@@ -217,6 +228,59 @@ function handle_routes_find_stops($data) {
     }
 }
 
+$route_join_table = "";
+$route_join_err = "";
+function handle_routes_join_on($data, $join) {
+    global $route_join_err, $route_join_table;
+
+    $valid = test_input($join, $join, $route_join_err, "Join condition",
+        function ($j) {return $j == "Agency" || $j == "Trip"; });
+
+    $sanitized = sanitize_data_object($data, "Route", MAX_ROUTE_ID_LENGTH,
+        function ($r) { return !empty(DataLoader::getInstance()->getRoute($r)); });
+    $valid &= $sanitized["valid"];
+    $route_ids = $sanitized["data"];
+    $route_errs = $sanitized["errors"];
+
+    foreach ($route_errs as $err) {
+        $route_join_err .= "<p>$err</p>";
+    }
+
+
+    if ($valid) {
+        $res = DataLoader::getInstance()->joinRoutesOn($route_ids, $join);
+
+        $table = "";
+        if ($res === null) {
+            $route_join_err = "<p>An error occured while joining the routes, please try again later</p>";
+        } else if (empty($res)) {
+            $route_join_err = "<p>No Results</p>";
+        } else {
+            $join_rows = $join == "Agency"
+                ? [["Type", "Name", "ID", "Agency"]]
+                : [["Type", "Name", "ID", "Trip ID", "Trip Name", "Headsign", "Departure Time"]];
+
+            foreach ($res as $row) {
+                $display_row = $join == "Agency"
+                    ? [$row["route_type"], $row["route_name"], $row["route_id"], $row["agency_name"]]
+                    : [$row["route_type"], $row["route_name"], $row["route_id"], $row["trip_id"],
+                        $row["trip_name"], $row["headsign"], $row["earliest_departure"]];
+
+                array_push($join_rows, $display_row);
+            }
+
+            // Build the table
+            $table = buildTable($join_rows);
+        }
+
+        $route_join_table = "
+            <div class='table-scroll-container'>
+                $table
+            </div>";
+    }
+}
+
+
 // ====================================
 // REQUEST HANDLING
 
@@ -244,10 +308,17 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && !empty($_POST[MY_STOPS_SELECT])
 
 // Handle stop route find request
 if ($_SERVER["REQUEST_METHOD"] == "POST" && !empty($_POST[ROUTE_SELECT])
-    && $_POST[ROUTE_SELECT_ACTION_ID] == true) {
-    echo "HKJEDFKADJ";
+    && $_POST[ROUTE_SELECT_ACTION_ID] == ROUTE_SELECT_ACTION_FIND_STOPS) {
     $data = is_array($_POST[ROUTE_SELECT]) ? $_POST[ROUTE_SELECT] : [$_POST[ROUTE_SELECT]];
     handle_routes_find_stops($data);
+}
+
+// Handle stop route find request
+if ($_SERVER["REQUEST_METHOD"] == "POST" && !empty($_POST[ROUTE_SELECT])
+    && $_POST[ROUTE_SELECT_ACTION_ID] == ROUTE_SELECT_ACTION_JOIN_ON
+    && isset($_POST[ROUTE_SELECT_ACTION_JOIN_ON_TYPE])) {
+    $data = is_array($_POST[ROUTE_SELECT]) ? $_POST[ROUTE_SELECT] : [$_POST[ROUTE_SELECT]];
+    handle_routes_join_on($data, $_POST[ROUTE_SELECT_ACTION_JOIN_ON_TYPE]);
 }
 
 // ====================================
@@ -310,6 +381,10 @@ if (!empty($stops_res)) {
     <div>
         <?php echo $route_stops_err ?>
         <?php echo $route_stops_table ?>
+    </div>
+    <div>
+        <?php echo $route_join_err ?>
+        <?php echo $route_join_table ?>
     </div>
 </section>
 
