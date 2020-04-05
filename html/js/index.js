@@ -19,3 +19,7 @@ function setLocation(position) {
 function locationError(geoError) {
     $("close_feedback").innerHTML = geoError.message + " (Code " + geoError.code +")";
 }
+
+function setSubmitAction(action) {
+    $("submit-action").value = action;
+}

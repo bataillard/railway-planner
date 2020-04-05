@@ -63,9 +63,35 @@ class DataLoader
     ";
 
     // =====================================================================================================
-
     private const CLOSEST_STOPS = "
         SELECT stop_id, stop_name, stop_lat, stop_long,
+               (2 * 6371 * ASIN(SQRT(
+                   POW(SIN((RADIANS(stop_lat) - targ_lat) / 2), 2) +
+                   COS(RADIANS(stop_lat)) * COS(targ_lat) * POW(SIN((RADIANS(stop_long) - targ_long) / 2), 2))))
+                    AS distance
+        FROM Stop CROSS JOIN (SELECT RADIANS(?) AS targ_lat, RADIANS(?) AS targ_long) Target
+        HAVING distance < ?
+        ORDER BY distance
+        LIMIT 0, 25";
+
+    private const SINGLE_ROUTE_TRACKS_QUERY = "
+        WITH SingleTripPerRoute AS (
+            SELECT RMain.route_id, TMain.trip_id
+            FROM Route RMain NATURAL JOIN Trip TMain INNER JOIN (
+                    SELECT route_id, GROUP_CONCAT(trip_id ORDER BY trip_id) AS grouped_trip_ids
+                    FROM Route R NATURAL JOIN Trip T
+                    WHERE route_id = ?
+                    GROUP BY R.route_id) GroupedRouteTrips
+                ON RMain.route_id = GroupedRouteTrips.route_id 
+                   AND FIND_IN_SET(TMain.trip_id, grouped_trip_ids) BETWEEN 1 AND 1)
+        SELECT DISTINCT route_id, stop_sequence, stop_name, stop_id, stop_lat, stop_long
+        FROM SingleTripPerRoute NATURAL JOIN StopTime NATURAL JOIN Stop
+        ORDER BY stop_sequence";
+
+    private const SINGLE_ROUTE = "SELECT * FROM Route WHERE route_id = ?";
+
+    private const CLOSEST_STOPS_NO_POS = "
+        SELECT stop_id, stop_name,
                (2 * 6371 * ASIN(SQRT(
                    POW(SIN((RADIANS(stop_lat) - targ_lat) / 2), 2) +
                    COS(RADIANS(stop_lat)) * COS(targ_lat) * POW(SIN((RADIANS(stop_long) - targ_long) / 2), 2))))
@@ -249,7 +275,7 @@ class DataLoader
         return $result;
     }
 
-    private function simpleGetQuery(string $query, string $format, string ...$params): array
+    private function simpleGetQuery(string $query, string $format, string ...$params)
     {
         $stmt = null;
         $result = [];
@@ -289,13 +315,18 @@ class DataLoader
         return null;
     }
 
-    public function getClosestStops(float $lat, float $lon, float $max_dist)
+    public function getClosestStops(float $lat, float $lon, float $max_dist, bool $show_pos)
     {
         $results = [];
-        $res = $this->simpleGetQuery(self::CLOSEST_STOPS, "ddd", $lat, $lon, $max_dist);
+        $query = $show_pos ? self::CLOSEST_STOPS : self::CLOSEST_STOPS_NO_POS;
+        $res = $this->simpleGetQuery($query, "ddd", $lat, $lon, $max_dist);
         foreach ($res as $row) {
-            array_push($results, ["id" => $row["stop_id"], "name" => $row["stop_name"],
-                "latitude" => $row["stop_lat"], "longitude" => $row["stop_long"], "distance" => $row["distance"]]);
+            $r = ["id" => $row["stop_id"], "name" => $row["stop_name"], "distance" => $row["distance"]];
+            if ($show_pos) {
+                $r["latitude"] = $row["stop_lat"];
+                $r["longitude"] = $row["stop_long"];
+            }
+            array_push($results, $r);
         }
 
         return $results;
@@ -353,6 +384,49 @@ class DataLoader
             $passenger_id, $stop_id);
     }
 
+    public function findThroughAllStops($stop_ids) {
+        $count = count($stop_ids);
+        $clean_stops = "";
+        foreach ($stop_ids as $stop_id) {
+            $clean_stops .= '"' . $this->db->escape_string($stop_id) . '",';
+        }
+        $clean_stops = rtrim($clean_stops, ",");
+
+        // Efficient division in MySQL! \o/
+        $query = "                
+            SELECT route_type, route_name, route_id 
+            FROM Route 
+            WHERE route_id IN 
+                (SELECT DISTINCT route_id
+                FROM Trip NATURAL JOIN StopTime
+                WHERE stop_id IN ($clean_stops)
+                GROUP BY trip_id
+                HAVING COUNT(stop_id) = $count);
+        ";
+
+        try {
+            $result = $this->db->query($query);
+            $routes = [];
+            while ($row = $result->fetch_assoc()) {
+                array_push($routes, $row);
+            }
+        } catch (mysqli_sql_exception $err) {
+            $this->log->error($err->getMessage());
+            $routes = null;
+        }
+
+        return $routes;
+    }
+
+    public function getRoute(string $route_id)
+    {
+        return $this->simpleGetQuery(self::SINGLE_ROUTE, "s", $route_id);
+    }
+
+    public function getSingleRouteTracks(string $route_id)
+    {
+        return $this->simpleGetQuery(self::SINGLE_ROUTE_TRACKS_QUERY, "s", $route_id);
+    }
 
 
     // ====================================================================================================

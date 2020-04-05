@@ -2,6 +2,7 @@
 
 namespace FindStop;
 use src\models\DataLoader;
+use const MyStops\SUBMIT_STOPS_ACTION_ID;
 use const MyStops\SUBMIT_STOPS_ARG;
 use function MyStops\getStopSaveErr as getMyStopSaveErr;
 
@@ -22,17 +23,27 @@ if ($_SERVER["REQUEST_METHOD"] == "GET" && !(empty($_GET["lat"]) && empty($_GET[
     $valid_max_dist = test_input($_GET["max_dist"], $max_dist, $max_dist_err, "Maximum distance",
         function ($x) {return is_numeric($x) && in_array($x, [1,5,10,25]); });
 
+    $show_geopos = $_GET["show_geopos"] == "on";
+
     if ($valid_lat && $valid_lon && $valid_max_dist) {
         // Get stops
         $dl = DataLoader::getInstance();
-        $results = $dl->getClosestStops($lat, $lon, $max_dist);
+
+        $results = $dl->getClosestStops($lat, $lon, $max_dist, $show_geopos);
 
         // Build a row of data for buildTable for each stop
-        $rows = [["", "Distance", "Name", "ID", "Latitude", "Longitude"]];
+        $rows = [["", "Distance", "Name", "ID"]];
+        if ($show_geopos) {
+            array_push($rows[0], "Latitude", "Longitude");
+        }
         foreach ($results as $row) {
             $dist = number_format($row["distance"], 3) . " km";
             $checkbox = buildCheckboxForGroup(SUBMIT_STOPS_ARG, $row["id"], "");
-            array_push($rows, [$checkbox, $dist, $row["name"], $row["id"], $row["latitude"], $row["longitude"]]);
+            $r = [$checkbox, $dist, $row["name"], $row["id"]];
+            if ($show_geopos) {
+                array_push($r, $row["latitude"], $row["longitude"]);
+            }
+            array_push($rows, $r);
         }
 
         // Build the table
@@ -44,6 +55,7 @@ if ($_SERVER["REQUEST_METHOD"] == "GET" && !(empty($_GET["lat"]) && empty($_GET[
                 <div class='table-scroll-container'>
                     $table
                 </div>
+                <input type='hidden' name='". SUBMIT_STOPS_ACTION_ID. "' value='true' />
                 <button type='submit'>Save stops</button>
                 <div>$stop_save_err</div>
             </form>";
@@ -73,6 +85,10 @@ if ($_SERVER["REQUEST_METHOD"] == "GET" && !(empty($_GET["lat"]) && empty($_GET[
                     <option value="25">25 km</option>
                 </select>
                 <div><?php echo $max_dist_err;?></div>
+            </div>
+            <div>
+                <label for="show-geopos">Show lat/long:</label>
+                <input id="show-geopos" type="checkbox" name="show_geopos" />
             </div>
         </div>
         <div class="container-row">
