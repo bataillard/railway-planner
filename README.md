@@ -1,5 +1,7 @@
 # railwayplanner
 
+This a railway planning webapp. It uses the [RAPTOR](https://www.microsoft.com/en-us/research/wp-content/uploads/2012/01/raptor_alenex.pdf) public transport routing algorithm. I can use any correctly formatted GTFS timetable dataset. In this casem, I used data from the Swiss [OpenTransportData](https://opentransportdata.swiss) platform. 
+
 ## Setup
 
 This server uses Apache2, [MySQL 8.0](https://www.itsupportwale.com/blog/how-to-install-mysql-8-on-ubuntu-18-04/)
